@@ -29,7 +29,7 @@ function App() {
 
   useEffect(() => {
     async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
       videoRef.current.srcObject = stream
 
       modelRef.current = await tf.loadGraphModel('/asl_model_web/model.json')
@@ -69,7 +69,7 @@ function App() {
           const confidence = Math.max(...Array.from(prediction.dataSync()))
           const letter = labelsRef.current[index]
 
-          if (confidence > 0.85) {
+          if (confidence > 0.92) {
             letterBufferRef.current.push(letter)
             if (letterBufferRef.current.length > 5) {
               letterBufferRef.current.shift()
@@ -102,6 +102,11 @@ function App() {
           tensor.dispose()
           prediction.dispose()
         }
+        else {
+    setPredictedLetter('')
+    lastLetterRef.current = ''
+    letterBufferRef.current = []
+}
         requestAnimationFrame(detect)
       }
       detect()
