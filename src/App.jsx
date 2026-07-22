@@ -16,7 +16,7 @@ function App() {
   const [remoteLetter, setRemoteLetter] = useState('')
   const [roomId, setRoomId] = useState('test-room')
   const [cameraReady, setCameraReady] = useState(false)
-
+  const letterBufferRef = useRef([])  
   useEffect(() => {
     async function startCamera() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true })
@@ -56,11 +56,23 @@ function App() {
           const tensor = tf.tensor2d([row])
           const prediction = modelRef.current.predict(tensor)
           const index = prediction.argMax(1).dataSync()[0]
+          const confidence = Math.max(...Array.from(prediction.dataSync()))
           const letter = labelsRef.current[index]
-          setPredictedLetter(letter)
+          if (confidence > 0.85) {
+          letterBufferRef.current.push(letter)
+          if (letterBufferRef.current.length > 5) {
+              letterBufferRef.current.shift()
+          }
+          const mostCommon = letterBufferRef.current
+              .sort((a, b) =>
+                  letterBufferRef.current.filter(v => v === a).length -
+                  letterBufferRef.current.filter(v => v === b).length
+              ).pop()
+          setPredictedLetter(mostCommon)
           if (socketRef.current) {
             socketRef.current.emit('word-detected', { roomId, word: letter })
           }
+        }
           tensor.dispose()
           prediction.dispose()
         }
