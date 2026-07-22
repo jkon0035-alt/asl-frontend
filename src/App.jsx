@@ -20,22 +20,28 @@ function App() {
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
   const [sentence, setSentence] = useState('')
+  const [remoteSentence, setRemoteSentence] = useState('')
   const [roomId] = useState('test-room')
   const [cameraReady, setCameraReady] = useState(false)
   const [darkMode, setDarkMode] = useState(true)
   const [muted, setMuted] = useState(false)
   const [cameraOff, setCameraOff] = useState(false)
   const [timerWidth, setTimerWidth] = useState(0)
+  const [showHelp, setShowHelp] = useState(false)
+  const [callEnded, setCallEnded] = useState(false)
+  const [remoteConnected, setRemoteConnected] = useState(false)
 
   useEffect(() => {
     async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: false 
+      })
       videoRef.current.srcObject = stream
 
       modelRef.current = await tf.loadGraphModel('/asl_model_web/model.json')
       const response = await fetch('/labels.json')
       labelsRef.current = await response.json()
-      console.log('Model loaded', labelsRef.current)
 
       const vision = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
@@ -47,7 +53,6 @@ function App() {
         runningMode: 'VIDEO',
         numHands: 2
       })
-      console.log('MediaPipe loaded')
 
       function detect() {
         if (!videoRef.current || !landmarkerRef.current) return
@@ -82,18 +87,23 @@ function App() {
 
             setPredictedLetter(mostCommon)
 
-            if (socketRef.current) {
-              socketRef.current.emit('word-detected', { roomId, word: mostCommon })
-            }
-
-            // Timer based sentence builder
             if (mostCommon !== lastLetterRef.current) {
               lastLetterRef.current = mostCommon
               if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
               setTimerWidth(0)
               setTimeout(() => setTimerWidth(100), 50)
               letterTimerRef.current = setTimeout(() => {
-                setSentence(prev => prev + mostCommon)
+                setSentence(prev => {
+                  const newSentence = prev + mostCommon
+                  if (socketRef.current) {
+                    socketRef.current.emit('word-detected', {
+                      roomId,
+                      word: mostCommon,
+                      sentence: newSentence
+                    })
+                  }
+                  return newSentence
+                })
                 setTimerWidth(0)
               }, 1000)
             }
@@ -101,12 +111,11 @@ function App() {
 
           tensor.dispose()
           prediction.dispose()
+        } else {
+          setPredictedLetter('')
+          lastLetterRef.current = ''
+          letterBufferRef.current = []
         }
-        else {
-    setPredictedLetter('')
-    lastLetterRef.current = ''
-    letterBufferRef.current = []
-}
         requestAnimationFrame(detect)
       }
       detect()
@@ -125,12 +134,11 @@ function App() {
     }
 
     socket.on('connect', () => {
-      console.log('Connected to signalling server')
       socket.emit('join-room', roomId)
     })
 
     socket.on('user-joined', async (userId) => {
-      console.log('User joined:', userId)
+      setRemoteConnected(true)
       const pc = new RTCPeerConnection(config)
       peerConnectionRef.current = pc
 
@@ -155,6 +163,7 @@ function App() {
     })
 
     socket.on('offer', async (data) => {
+      setRemoteConnected(true)
       const pc = new RTCPeerConnection(config)
       peerConnectionRef.current = pc
 
@@ -194,6 +203,7 @@ function App() {
 
     socket.on('word-detected', (data) => {
       setRemoteLetter(data.word)
+      if (data.sentence) setRemoteSentence(data.sentence)
     })
 
   }, [roomId, cameraReady])
@@ -229,83 +239,173 @@ function App() {
     if (stream) {
       stream.getTracks().forEach(track => track.stop())
     }
-    window.location.reload()
+    setCallEnded(true)
   }
 
-  function clearSentence() {
-    setSentence('')
+  if (callEnded) {
+    return (
+      <div className={`app ${darkMode ? 'dark' : 'light'}`}>
+        <div className="call-ended">
+          <span style={{ fontSize: '2.5rem' }}>📵</span>
+          <h2>Call Ended</h2>
+          <p>Your session has ended</p>
+          <button className="rejoin-btn" onClick={() => window.location.reload()}>
+            Rejoin
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className={`app ${darkMode ? 'dark' : 'light'}`}>
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
+      {/* Help Modal */}
+      {showHelp && (
+        <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>How to use ASL Detector</h2>
+              <button className="modal-close" onClick={() => setShowHelp(false)}>✕</button>
+            </div>
+
+            <div className="help-section">
+              <h3>Getting Started</h3>
+              <div className="help-steps">
+                <div className="help-step">
+                  <span className="step-num">1</span>
+                  <span>Allow camera access when prompted by your browser</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">2</span>
+                  <span>Share the URL with someone else — they open the same link to join your call</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">3</span>
+                  <span>Hold your hand in front of the camera and sign ASL letters</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">4</span>
+                  <span>Hold each letter steady for 1 second — it will be added to the sentence automatically</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">5</span>
+                  <span>Your sentence appears in the panel below the videos and is sent to the other person</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="help-section">
+              <h3>Tips for better detection</h3>
+              <div className="help-steps">
+                <div className="help-step">
+                  <span className="step-num">💡</span>
+                  <span>Good lighting on your hand improves accuracy significantly</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">💡</span>
+                  <span>Keep your hand centred in the camera frame</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">💡</span>
+                  <span>Letters like M, N, S are similar — hold them extra steady</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="help-section">
+              <h3>Supported letters</h3>
+              <div className="asl-grid">
+                {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l => (
+                  <div key={l} className="asl-letter">{l}</div>
+                ))}
+                <div className="asl-letter">DEL</div>
+                <div className="asl-letter">SPC</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="header">
-        <h1>✋ ASL Detector</h1>
-        <button className="theme-toggle" onClick={() => setDarkMode(prev => !prev)}>
-          {darkMode ? '☀️' : '🌙'}
-        </button>
-      </div>
-
-      {/* Videos */}
-      <div className="video-section">
-        <div className="video-card">
-          <div className="video-wrapper">
-            <video ref={videoRef} autoPlay muted />
-            <span className="video-label">You</span>
-            <div
-              className="timer-bar"
-              style={{ width: `${timerWidth}%` }}
-            />
-          </div>
-          <div className="letter-display">{predictedLetter}</div>
+        <div className="header-left">
+          <h1>✋ ASL Detector</h1>
         </div>
-
-        <div className="video-card">
-          <div className="video-wrapper">
-            <video ref={remoteVideoRef} autoPlay />
-            <span className="video-label">Remote</span>
-          </div>
-          <div className="letter-display">{remoteLetter}</div>
-        </div>
-      </div>
-
-      {/* Sentence Panel */}
-      <div className="sentence-panel">
-        <p>Sentence</p>
-        <div className="sentence-text">{sentence || '...'}</div>
-        {sentence && (
-          <button
-            onClick={clearSentence}
-            style={{
-              marginTop: '8px',
-              background: 'none',
-              border: 'none',
-              opacity: 0.5,
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-              color: 'inherit'
-            }}
-          >
-            Clear
+        <div className="header-right">
+          <button className="icon-btn" onClick={() => setShowHelp(true)} title="Help">
+            ?
           </button>
-        )}
+          <button className="icon-btn" onClick={() => setDarkMode(prev => !prev)} title="Toggle theme">
+            {darkMode ? '☀️' : '🌙'}
+          </button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="main">
+        {/* Video Grid */}
+        <div className="video-grid">
+          <div className="video-card">
+            <video ref={videoRef} autoPlay muted />
+            <div className="video-overlay">
+              <span className="video-name">You</span>
+              <span className="video-letter">{predictedLetter}</span>
+            </div>
+            <div className="timer-bar" style={{ width: `${timerWidth}%` }} />
+          </div>
+
+          <div className="video-card">
+            {remoteConnected
+              ? <video ref={remoteVideoRef} autoPlay />
+              : <div className="no-video">
+                  <video ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
+                  Waiting for someone to join...
+                </div>
+            }
+            <div className="video-overlay">
+              <span className="video-name">Remote</span>
+              <span className="video-letter">{remoteLetter}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Your Sentence */}
+        <div className="sentence-panel">
+          <span className="sentence-label">You</span>
+          <span className={`sentence-text ${!sentence ? 'sentence-muted' : ''}`}>
+            {sentence || 'Start signing to build a sentence...'}
+          </span>
+          {sentence && (
+            <button className="clear-btn" onClick={() => setSentence('')}>
+              Clear
+            </button>
+          )}
+        </div>
+
+        {/* Remote Sentence */}
+        <div className="remote-sentence-panel">
+          <span className="sentence-label">Remote</span>
+          <span className="remote-sentence-text">
+            {remoteSentence || 'Waiting for remote signing...'}
+          </span>
+        </div>
       </div>
 
       {/* Control Bar */}
       <div className="control-bar">
         <button
-          className={`ctrl-btn ${muted ? 'active' : ''}`}
+          className={`ctrl-btn ${muted ? 'off' : ''}`}
           onClick={toggleMute}
           title={muted ? 'Unmute' : 'Mute'}
         >
           {muted ? '🔇' : '🎙️'}
         </button>
         <button
-          className={`ctrl-btn ${cameraOff ? 'active' : ''}`}
+          className={`ctrl-btn ${cameraOff ? 'off' : ''}`}
           onClick={toggleCamera}
-          title={cameraOff ? 'Turn camera on' : 'Turn camera off'}
+          title={cameraOff ? 'Camera on' : 'Camera off'}
         >
           {cameraOff ? '📷' : '🎥'}
         </button>
