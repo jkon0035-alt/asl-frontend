@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import * as tf from '@tensorflow/tfjs'
 import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 import { io } from 'socket.io-client'
+import './App.css'
 
 function App() {
   const videoRef = useRef(null)
@@ -12,14 +13,23 @@ function App() {
   const remoteVideoRef = useRef(null)
   const peerConnectionRef = useRef(null)
   const socketRef = useRef(null)
+  const letterBufferRef = useRef([])
+  const letterTimerRef = useRef(null)
+  const lastLetterRef = useRef('')
+
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
-  const [roomId, setRoomId] = useState('test-room')
+  const [sentence, setSentence] = useState('')
+  const [roomId] = useState('test-room')
   const [cameraReady, setCameraReady] = useState(false)
-  const letterBufferRef = useRef([])  
+  const [darkMode, setDarkMode] = useState(true)
+  const [muted, setMuted] = useState(false)
+  const [cameraOff, setCameraOff] = useState(false)
+  const [timerWidth, setTimerWidth] = useState(0)
+
   useEffect(() => {
     async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       videoRef.current.srcObject = stream
 
       modelRef.current = await tf.loadGraphModel('/asl_model_web/model.json')
@@ -58,21 +68,37 @@ function App() {
           const index = prediction.argMax(1).dataSync()[0]
           const confidence = Math.max(...Array.from(prediction.dataSync()))
           const letter = labelsRef.current[index]
+
           if (confidence > 0.85) {
-          letterBufferRef.current.push(letter)
-          if (letterBufferRef.current.length > 5) {
+            letterBufferRef.current.push(letter)
+            if (letterBufferRef.current.length > 5) {
               letterBufferRef.current.shift()
-          }
-          const mostCommon = letterBufferRef.current
+            }
+            const mostCommon = letterBufferRef.current
               .sort((a, b) =>
-                  letterBufferRef.current.filter(v => v === a).length -
-                  letterBufferRef.current.filter(v => v === b).length
+                letterBufferRef.current.filter(v => v === a).length -
+                letterBufferRef.current.filter(v => v === b).length
               ).pop()
-          setPredictedLetter(mostCommon)
-          if (socketRef.current) {
-            socketRef.current.emit('word-detected', { roomId, word: letter })
+
+            setPredictedLetter(mostCommon)
+
+            if (socketRef.current) {
+              socketRef.current.emit('word-detected', { roomId, word: mostCommon })
+            }
+
+            // Timer based sentence builder
+            if (mostCommon !== lastLetterRef.current) {
+              lastLetterRef.current = mostCommon
+              if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
+              setTimerWidth(0)
+              setTimeout(() => setTimerWidth(100), 50)
+              letterTimerRef.current = setTimeout(() => {
+                setSentence(prev => prev + mostCommon)
+                setTimerWidth(0)
+              }, 1000)
+            }
           }
-        }
+
           tensor.dispose()
           prediction.dispose()
         }
@@ -167,14 +193,125 @@ function App() {
 
   }, [roomId, cameraReady])
 
+  function toggleMute() {
+    const stream = videoRef.current?.srcObject
+    if (stream) {
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = !track.enabled
+      })
+      setMuted(prev => !prev)
+    }
+  }
+
+  function toggleCamera() {
+    const stream = videoRef.current?.srcObject
+    if (stream) {
+      stream.getVideoTracks().forEach(track => {
+        track.enabled = !track.enabled
+      })
+      setCameraOff(prev => !prev)
+    }
+  }
+
+  function endCall() {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close()
+    }
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+    }
+    const stream = videoRef.current?.srcObject
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop())
+    }
+    window.location.reload()
+  }
+
+  function clearSentence() {
+    setSentence('')
+  }
+
   return (
-    <div>
-      <h1>ASL Detector</h1>
-      <video ref={videoRef} autoPlay />
+    <div className={`app ${darkMode ? 'dark' : 'light'}`}>
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-      <h2>You: {predictedLetter}</h2>
-      <video ref={remoteVideoRef} autoPlay />
-      <h2>Remote: {remoteLetter}</h2>
+
+      {/* Header */}
+      <div className="header">
+        <h1>✋ ASL Detector</h1>
+        <button className="theme-toggle" onClick={() => setDarkMode(prev => !prev)}>
+          {darkMode ? '☀️' : '🌙'}
+        </button>
+      </div>
+
+      {/* Videos */}
+      <div className="video-section">
+        <div className="video-card">
+          <div className="video-wrapper">
+            <video ref={videoRef} autoPlay muted />
+            <span className="video-label">You</span>
+            <div
+              className="timer-bar"
+              style={{ width: `${timerWidth}%` }}
+            />
+          </div>
+          <div className="letter-display">{predictedLetter}</div>
+        </div>
+
+        <div className="video-card">
+          <div className="video-wrapper">
+            <video ref={remoteVideoRef} autoPlay />
+            <span className="video-label">Remote</span>
+          </div>
+          <div className="letter-display">{remoteLetter}</div>
+        </div>
+      </div>
+
+      {/* Sentence Panel */}
+      <div className="sentence-panel">
+        <p>Sentence</p>
+        <div className="sentence-text">{sentence || '...'}</div>
+        {sentence && (
+          <button
+            onClick={clearSentence}
+            style={{
+              marginTop: '8px',
+              background: 'none',
+              border: 'none',
+              opacity: 0.5,
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              color: 'inherit'
+            }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+
+      {/* Control Bar */}
+      <div className="control-bar">
+        <button
+          className={`ctrl-btn ${muted ? 'active' : ''}`}
+          onClick={toggleMute}
+          title={muted ? 'Unmute' : 'Mute'}
+        >
+          {muted ? '🔇' : '🎙️'}
+        </button>
+        <button
+          className={`ctrl-btn ${cameraOff ? 'active' : ''}`}
+          onClick={toggleCamera}
+          title={cameraOff ? 'Turn camera on' : 'Turn camera off'}
+        >
+          {cameraOff ? '📷' : '🎥'}
+        </button>
+        <button
+          className="ctrl-btn end"
+          onClick={endCall}
+          title="End call"
+        >
+          📵
+        </button>
+      </div>
     </div>
   )
 }
