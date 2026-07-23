@@ -80,12 +80,15 @@ function App() {
             if (letterBufferRef.current.length > 5) {
               letterBufferRef.current.shift()
             }
-            const mostCommon = letterBufferRef.current
-              .sort((a, b) =>
+            const mostCommon = letterBufferRef.current.sort((a, b) =>
                 letterBufferRef.current.filter(v => v === a).length -
                 letterBufferRef.current.filter(v => v === b).length
               ).pop()
-
+            const filtered = ['space', 'nothing', 'del']
+            if (!filtered.includes(mostCommon)) {
+                setPredictedLetter(mostCommon)
+                // rest of your timer code
+            }
             setPredictedLetter(mostCommon)
 
             if (mostCommon !== lastLetterRef.current) {
