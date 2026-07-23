@@ -116,7 +116,7 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
 }
 
 .video-card {
