@@ -87,11 +87,7 @@ function App() {
             const filtered = ['space', 'nothing', 'del']
             if (!filtered.includes(mostCommon)) {
                 setPredictedLetter(mostCommon)
-                // rest of your timer code
-            }
-            setPredictedLetter(mostCommon)
-
-            if (mostCommon !== lastLetterRef.current) {
+                if (mostCommon !== lastLetterRef.current) {
               lastLetterRef.current = mostCommon
               if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
               setTimerWidth(0)
@@ -108,6 +104,7 @@ function App() {
                 }
                 setTimerWidth(0)
               }, 1000)
+            }
             }
           }
 
