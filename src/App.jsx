@@ -139,6 +139,17 @@ function App() {
     socket.on('user-joined', async (userId) => {
       setRemoteConnected(true)
       const pc = new RTCPeerConnection(config)
+      pc.onconnectionstatechange = () => {
+        console.log("Connection:", pc.connectionState)
+      }
+
+      pc.oniceconnectionstatechange = () => {
+        console.log("ICE:", pc.iceConnectionState)
+      }
+
+      pc.onicegatheringstatechange = () => {
+        console.log("Gathering:", pc.iceGatheringState)
+      }
       peerConnectionRef.current = pc
 
       const stream = videoRef.current?.srcObject
@@ -170,14 +181,29 @@ function App() {
       setRemoteConnected(true)
       const pc = new RTCPeerConnection(config)
       peerConnectionRef.current = pc
+      pc.onconnectionstatechange = () => {
+        console.log("Connection:", pc.connectionState)
+      }
 
+      pc.oniceconnectionstatechange = () => {
+        console.log("ICE:", pc.iceConnectionState)
+      }
+
+      pc.onicegatheringstatechange = () => {
+        console.log("Gathering:", pc.iceGatheringState)
+      }
       const stream = videoRef.current?.srcObject
       if (stream) {
         stream.getTracks().forEach(track => pc.addTrack(track, stream))
       }
 
       pc.ontrack = (event) => {
-        remoteVideoRef.current.srcObject = event.streams[0]
+        console.log("Received remote stream", event.streams)
+
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0]
+          remoteVideoRef.current.play().catch(console.error)
+        }
       }
 
       pc.onicecandidate = (event) => {
@@ -346,7 +372,7 @@ function App() {
       <div className="main">
         <div className="video-grid">
           <div className="video-card">
-            <video ref={videoRef} autoPlay muted />
+            <video ref={videoRef} autoPlay playsInline muted />
             <div className="video-overlay">
               <span className="video-name">You</span>
               <span className="video-letter">{predictedLetter}</span>
