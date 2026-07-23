@@ -382,7 +382,15 @@ function App() {
 
           <div className="video-card">
             {remoteConnected
-              ? <video ref={remoteVideoRef} autoPlay playsInline />
+              ? <video 
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  onLoadedMetadata={() => {
+                    console.log("Remote video loaded")
+                  }}
+                />
               : (
                 <div className="no-video">
                   <video ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
