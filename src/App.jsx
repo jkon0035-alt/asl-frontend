@@ -16,6 +16,7 @@ function App() {
   const letterBufferRef = useRef([])
   const letterTimerRef = useRef(null)
   const lastLetterRef = useRef('')
+  const sentenceRef = useRef('')
 
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
@@ -33,9 +34,9 @@ function App() {
 
   useEffect(() => {
     async function startCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true, 
-        audio: false 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
       })
       videoRef.current.srcObject = stream
 
@@ -93,17 +94,15 @@ function App() {
               setTimerWidth(0)
               setTimeout(() => setTimerWidth(100), 50)
               letterTimerRef.current = setTimeout(() => {
-                setSentence(prev => {
-                  const newSentence = prev + mostCommon
-                  if (socketRef.current) {
-                    socketRef.current.emit('word-detected', {
-                      roomId,
-                      word: mostCommon,
-                      sentence: newSentence
-                    })
-                  }
-                  return newSentence
-                })
+                sentenceRef.current = sentenceRef.current + mostCommon
+                setSentence(sentenceRef.current)
+                if (socketRef.current) {
+                  socketRef.current.emit('word-detected', {
+                    roomId,
+                    word: mostCommon,
+                    sentence: sentenceRef.current
+                  })
+                }
                 setTimerWidth(0)
               }, 1000)
             }
@@ -261,7 +260,6 @@ function App() {
     <div className={`app ${darkMode ? 'dark' : 'light'}`}>
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-      {/* Help Modal */}
       {showHelp && (
         <div className="modal-overlay" onClick={() => setShowHelp(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -291,7 +289,7 @@ function App() {
                 </div>
                 <div className="help-step">
                   <span className="step-num">5</span>
-                  <span>Your sentence appears in the panel below the videos and is sent to the other person</span>
+                  <span>Your sentence appears below the videos and is sent to the other person in real time</span>
                 </div>
               </div>
             </div>
@@ -328,24 +326,19 @@ function App() {
         </div>
       )}
 
-      {/* Header */}
       <div className="header">
         <div className="header-left">
           <h1>✋ ASL Detector</h1>
         </div>
         <div className="header-right">
-          <button className="icon-btn" onClick={() => setShowHelp(true)} title="Help">
-            ?
-          </button>
+          <button className="icon-btn" onClick={() => setShowHelp(true)} title="Help">?</button>
           <button className="icon-btn" onClick={() => setDarkMode(prev => !prev)} title="Toggle theme">
             {darkMode ? '☀️' : '🌙'}
           </button>
         </div>
       </div>
 
-      {/* Main */}
       <div className="main">
-        {/* Video Grid */}
         <div className="video-grid">
           <div className="video-card">
             <video ref={videoRef} autoPlay muted />
@@ -359,10 +352,12 @@ function App() {
           <div className="video-card">
             {remoteConnected
               ? <video ref={remoteVideoRef} autoPlay />
-              : <div className="no-video">
+              : (
+                <div className="no-video">
                   <video ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
                   Waiting for someone to join...
                 </div>
+              )
             }
             <div className="video-overlay">
               <span className="video-name">Remote</span>
@@ -371,20 +366,21 @@ function App() {
           </div>
         </div>
 
-        {/* Your Sentence */}
         <div className="sentence-panel">
           <span className="sentence-label">You</span>
           <span className={`sentence-text ${!sentence ? 'sentence-muted' : ''}`}>
             {sentence || 'Start signing to build a sentence...'}
           </span>
           {sentence && (
-            <button className="clear-btn" onClick={() => setSentence('')}>
+            <button className="clear-btn" onClick={() => {
+              setSentence('')
+              sentenceRef.current = ''
+            }}>
               Clear
             </button>
           )}
         </div>
 
-        {/* Remote Sentence */}
         <div className="remote-sentence-panel">
           <span className="sentence-label">Remote</span>
           <span className="remote-sentence-text">
@@ -393,7 +389,6 @@ function App() {
         </div>
       </div>
 
-      {/* Control Bar */}
       <div className="control-bar">
         <button
           className={`ctrl-btn ${muted ? 'off' : ''}`}
@@ -409,11 +404,7 @@ function App() {
         >
           {cameraOff ? '📷' : '🎥'}
         </button>
-        <button
-          className="ctrl-btn end"
-          onClick={endCall}
-          title="End call"
-        >
+        <button className="ctrl-btn end" onClick={endCall} title="End call">
           📵
         </button>
       </div>
