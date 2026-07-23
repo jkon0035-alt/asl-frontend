@@ -87,24 +87,27 @@ function App() {
             const filtered = ['space', 'nothing', 'del']
             if (!filtered.includes(mostCommon)) {
                 setPredictedLetter(mostCommon)
-              if (mostCommon !== lastLetterRef.current) {
+                // rest of your timer code
+            }
+            setPredictedLetter(mostCommon)
+
+            if (mostCommon !== lastLetterRef.current) {
               lastLetterRef.current = mostCommon
-                if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
-                setTimerWidth(0)
-                setTimeout(() => setTimerWidth(100), 50)
-                letterTimerRef.current = setTimeout(() => {
-                  sentenceRef.current = sentenceRef.current + mostCommon
-                  setSentence(sentenceRef.current)
-                  if (socketRef.current) {
-                    socketRef.current.emit('word-detected', {
-                      roomId,
-                      word: mostCommon,
-                      sentence: sentenceRef.current
+              if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
+              setTimerWidth(0)
+              setTimeout(() => setTimerWidth(100), 50)
+              letterTimerRef.current = setTimeout(() => {
+                sentenceRef.current = sentenceRef.current + mostCommon
+                setSentence(sentenceRef.current)
+                if (socketRef.current) {
+                  socketRef.current.emit('word-detected', {
+                    roomId,
+                    word: mostCommon,
+                    sentence: sentenceRef.current
                   })
                 }
                 setTimerWidth(0)
               }, 1000)
-            }
             }
           }
 
@@ -147,7 +150,12 @@ function App() {
       }
 
       pc.ontrack = (event) => {
+      console.log("Received remote stream", event.streams)
+
+      if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play().catch(console.error)
+        }
       }
 
       pc.onicecandidate = (event) => {
@@ -351,7 +359,7 @@ function App() {
 
           <div className="video-card">
             {remoteConnected
-              ? <video ref={remoteVideoRef} autoPlay />
+              ? <video ref={remoteVideoRef} autoPlay playsInline />
               : (
                 <div className="no-video">
                   <video ref={remoteVideoRef} autoPlay style={{ display: 'none' }} />
