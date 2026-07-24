@@ -17,6 +17,8 @@ function App() {
   const letterTimerRef = useRef(null)
   const lastLetterRef = useRef('')
   const sentenceRef = useRef('')
+  const swipeTrackRef = useRef([])
+  const lastSwipeTimeRef = useRef(0)
 
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
@@ -74,7 +76,24 @@ function App() {
           const index = prediction.argMax(1).dataSync()[0]
           const confidence = Math.max(...Array.from(prediction.dataSync()))
           const letter = labelsRef.current[index]
+          const wrist = results.landmarks[0][0]
+          swipeTrackRef.current.push(wrist.x)
+          if (swipeTrackRef.current.length > 15) {
+              swipeTrackRef.current.shift()
+          }
 
+          if (swipeTrackRef.current.length === 15) {
+              const start = swipeTrackRef.current[0]
+              const end = swipeTrackRef.current[14]
+              const now = Date.now()
+              // right to left swipe — x decreases significantly
+              if (start - end > 0.3 && now - lastSwipeTimeRef.current > 2000) {
+                  lastSwipeTimeRef.current = now
+                  setSentence('')
+                  sentenceRef.current = ''
+                  swipeTrackRef.current = []
+              }
+          }
           if (confidence > 0.92) {
             letterBufferRef.current.push(letter)
             if (letterBufferRef.current.length > 5) {
@@ -129,8 +148,20 @@ function App() {
     socketRef.current = socket
 
     const config = {
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
     }
+  ]
+}
 
     socket.on('connect', () => {
       socket.emit('join-room', roomId)
@@ -321,6 +352,10 @@ function App() {
                 <div className="help-step">
                   <span className="step-num">5</span>
                   <span>Your sentence appears below the videos and is sent to the other person in real time</span>
+                </div>
+                <div className="help-step">
+                  <span className="step-num">6</span>
+                  <span>Swipe your hand quickly from right to left to clear your sentence</span>
                 </div>
               </div>
             </div>
