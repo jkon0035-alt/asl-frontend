@@ -19,6 +19,7 @@ function App() {
   const sentenceRef = useRef('')
   const swipeTrackRef = useRef([])
   const lastSwipeTimeRef = useRef(0)
+  const pauseUntilRef = useRef(0)
 
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
@@ -87,8 +88,9 @@ function App() {
               const end = swipeTrackRef.current[14]
               const now = Date.now()
               // right to left swipe — x decreases significantly
-              if (start - end > 0.3 && now - lastSwipeTimeRef.current > 2000) {
+              if (start - end > 0.4 && now - lastSwipeTimeRef.current > 3000) {
                   lastSwipeTimeRef.current = now
+                  pauseUntilRef.current = now + 2000 
                   setSentence('')
                   sentenceRef.current = ''
                   swipeTrackRef.current = []
@@ -112,6 +114,7 @@ function App() {
               setTimerWidth(0)
               setTimeout(() => setTimerWidth(100), 50)
               letterTimerRef.current = setTimeout(() => {
+                if (Date.now() < pauseUntilRef.current) return
                 sentenceRef.current = sentenceRef.current + mostCommon
                 setSentence(sentenceRef.current)
                 if (socketRef.current) {
