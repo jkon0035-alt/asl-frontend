@@ -20,7 +20,7 @@ function App() {
   const swipeTrackRef = useRef([])
   const lastSwipeTimeRef = useRef(0)
   const pauseUntilRef = useRef(0)
-
+  const [pendingLetter, setPendingLetter] = useState('')
   const [predictedLetter, setPredictedLetter] = useState('')
   const [remoteLetter, setRemoteLetter] = useState('')
   const [sentence, setSentence] = useState('')
@@ -97,6 +97,12 @@ function App() {
               }
           }
           if (confidence > 0.92) {
+            if (Date.now() < pauseUntilRef.current) {
+                tensor.dispose()
+                prediction.dispose()
+                requestAnimationFrame(detect)
+                return
+            }
             letterBufferRef.current.push(letter)
             if (letterBufferRef.current.length > 5) {
               letterBufferRef.current.shift()
@@ -107,7 +113,6 @@ function App() {
               ).pop()
             const filtered = ['space', 'nothing', 'del']
             if (!filtered.includes(mostCommon)) {
-                setPredictedLetter(mostCommon)
                 if (mostCommon !== lastLetterRef.current) {
               lastLetterRef.current = mostCommon
               if (letterTimerRef.current) clearTimeout(letterTimerRef.current)
@@ -115,6 +120,7 @@ function App() {
               setTimeout(() => setTimerWidth(100), 50)
               letterTimerRef.current = setTimeout(() => {
                 if (Date.now() < pauseUntilRef.current) return
+                setPredictedLetter(mostCommon)
                 sentenceRef.current = sentenceRef.current + mostCommon
                 setSentence(sentenceRef.current)
                 if (socketRef.current) {
@@ -123,6 +129,7 @@ function App() {
                     word: mostCommon,
                     sentence: sentenceRef.current
                   })
+                  setPendingLetter(mostCommon)
                 }
                 setTimerWidth(0)
               }, 1000)
@@ -134,6 +141,7 @@ function App() {
           prediction.dispose()
         } else {
           setPredictedLetter('')
+          setPendingLetter('')
           lastLetterRef.current = ''
           letterBufferRef.current = []
         }
@@ -413,7 +421,12 @@ function App() {
             <video ref={videoRef} autoPlay playsInline muted />
             <div className="video-overlay">
               <span className="video-name">You</span>
-              <span className="video-letter">{predictedLetter}</span>
+              <span className="video-letter">
+                {predictedLetter || ''}
+                {pendingLetter && pendingLetter !== predictedLetter && (
+                    <span style={{ opacity: 0.4, fontSize: '1.5rem' }}> {pendingLetter}</span>
+                )}
+            </span>
             </div>
             <div className="timer-bar" style={{ width: `${timerWidth}%` }} />
           </div>
